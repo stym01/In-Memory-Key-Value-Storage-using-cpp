@@ -1,16 +1,16 @@
-#include "../include/kv_store.h" // Correct path to header
+#include "../include/kv_store.h" 
 #include <iostream>
 
-// Constructor: Open the file ONCE when server starts
 KVStore::KVStore(size_t cap) : capacity(cap) {
+    //openingg file once
     file_stream.open("database.aof", std::ios::app);
     if (!file_stream.is_open()) {
         std::cerr << "Error: Could not open AOF file!" << std::endl;
     }
 }
 
-// Destructor: Close the file when server stops
 KVStore::~KVStore() {
+    //closing the file once
     if (file_stream.is_open()) {
         file_stream.close();
     }
@@ -32,7 +32,7 @@ void KVStore::set(const std::string& key, const std::string& value, int ttl_seco
 
     // Case 1: Key already exists -> Update it
     if (store.find(key) != store.end()) {
-        store[key].first = {value, expiry}; // Update data
+        store[key].first = {value, expiry}; 
         
         // Move to Front (Most Recently Used)
         lru_list.splice(lru_list.begin(), lru_list, store[key].second);
@@ -42,9 +42,9 @@ void KVStore::set(const std::string& key, const std::string& value, int ttl_seco
         // EVICTION LOGIC: If full, remove the oldest (Back of list)
         if (store.size() >= capacity) {
             std::string lru_key = lru_list.back();
-            lru_list.pop_back(); // Remove from list
-            store.erase(lru_key); // Remove from map
-            // Optional: Log eviction
+            lru_list.pop_back(); 
+            store.erase(lru_key);
+            
             _log_to_file("EVICT " + lru_key); 
         }
 
@@ -66,8 +66,8 @@ void KVStore::set(const std::string& key, const std::string& value, int ttl_seco
 // }
 
 std::string KVStore::get(const std::string& key) {
-    // We need a unique_lock (Write Lock) now because "Lazy Deletion" modifies the map!
-    // If we find an expired key, we have to delete it, so we can't use a shared_lock.
+    // If we find an expired key, we have to delete it (Lazy Deletiion i.e. we will not delete just after timeout...we will wait for someone to access it and the moment they access it we will delete it), 
+    // so we can't use a shared_lock. so using the unique(write) lock
     std::unique_lock<std::shared_mutex> lock(rw_lock); 
 
     if (store.find(key) == store.end()) {
@@ -77,13 +77,13 @@ std::string KVStore::get(const std::string& key) {
     // Check Expiry (Lazy Deletion)
     Entry& entry = store[key].first;
     if (entry.expiry_time != 0 && time(NULL) > entry.expiry_time) {
-        // Remove from list and map
+        // Removing  from list and map
         lru_list.erase(store[key].second);
         store.erase(key);
         return "NULL";
     }
 
-    // LRU UPDATE: Move accessed key to Front of list
+    // updating the lru by moving the accessed key to the front of list
     lru_list.splice(lru_list.begin(), lru_list, store[key].second);
 
     return entry.value;
@@ -93,9 +93,8 @@ bool KVStore::del(const std::string& key) {
     std::unique_lock<std::shared_mutex> lock(rw_lock);
     
     if (store.find(key) != store.end()) {
-        // Remove from list
+        // Remove from list and map
         lru_list.erase(store[key].second);
-        // Remove from map
         store.erase(key);
         _log_to_file("DEL " + key);
         return true;

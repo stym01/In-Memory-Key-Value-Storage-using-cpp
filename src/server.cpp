@@ -25,19 +25,9 @@ void handle_client(int client_socket) {
         if (command == "SET") {
             std::getline(ss, value);
             if (!value.empty() && value[0] == ' ') value.erase(0, 1); // Remove leading space
-            
-            // Check if the last part of "value" is a number (TTL)
-            // Logic: Does t[he user want "SET name Satyam" or "SET name Satyam 10"?
-            // A simple parser hack:
-            // We assume command format: SET key value [TTL]
-            
+
             int ttl = 0;
-            // Try to find the last space to split Value and TTL?
-            // For simplicity in C++, let's assume the client sends "SET key value ttl"
-            // But since value can have spaces, this is tricky. 
-            // Let's stick to a strict format for now: value cannot have spaces OR
-            // Format: SET key value ttl (value is single word)
-            
+
             std::stringstream value_ss(value);
             std::string actual_value;
             value_ss >> actual_value; 
