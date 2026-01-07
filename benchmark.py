@@ -3,7 +3,7 @@ import time
 
 HOST = '127.0.0.1'
 PORT = 8080
-REQUESTS = 10000  # We will send 10,000 requests
+REQUESTS = 10000  # no of req send by us
 
 def benchmark():
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
