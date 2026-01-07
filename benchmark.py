@@ -13,9 +13,9 @@ def benchmark():
     start_time = time.time()
     
     for i in range(0,REQUESTS):
-        msg = f"SET key{i} value{i} {i}"  # Added space for safety
+        msg = f"SET key{i} value{i} {i}" 
         client.sendall(msg.encode())
-        response = client.recv(1024) # Wait for "OK"
+        response = client.recv(1024) 
         
     end_time = time.time()
     duration = end_time - start_time
