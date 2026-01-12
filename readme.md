@@ -93,14 +93,20 @@ nc localhost 8080
 * `GET <key>`: Retrieve a value.
 * `DEL <key>`: Remove a key.
 
-**Example Session:**
+**Example Session on client terminal:**
 ```bash
-SET value1 active
-OK
-GET status
-active
-SET value2 10 20 #it will assign 10 to value2 and it will expire after 20 seconds
-OK
+SET value1 96   #(sent request from client)
+OK              #(received response from server)  
+GET value1      #(sent request from client)
+96              #(received response from server)  
+SET value2 10 20 #it will assign 10 to value2 and it will expire after 20 seconds  #(sent request from client)
+OK              #(response received from server)
+GET value2
+10
+
+#after 20 seconds
+GET value2
+NULL           #(response from server as now this key has been deleted)
 ```
 
 ## Deployment
