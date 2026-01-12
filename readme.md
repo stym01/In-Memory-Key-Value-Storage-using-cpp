@@ -39,6 +39,26 @@ graph TD
     KVStore -->|Log| AOF[AOF Disk File]
 ```
 
+## Performance Benchmarks
+
+To verify the throughput of the server, a custom Python benchmarking script was used to send sequential `SET` commands over a local TCP loopback interface.
+
+**Test Conditions:**
+* **Client:** Python script (Single-threaded, blocking I/O)
+* **Protocol:** Raw TCP Sockets
+* **Payload:** Sequential `SET` operations
+* **Environment:** Linux (WSL2)
+
+**Results:**
+
+| Metric | Result |
+| :--- | :--- |
+| **Total Requests** | 10,000 |
+| **Time Taken** | 1.03 seconds |
+| **Throughput** | **9,683 Requests/Sec** |
+
+> *Note: These results demonstrate the efficiency of the raw socket implementation. The server effectively handles ~9.6k transactions per second even when throttled by the synchronous nature of a single-threaded Python client.*
+
 ## Build and Usage
 
 ### Prerequisites
