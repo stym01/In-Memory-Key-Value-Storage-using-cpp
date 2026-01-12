@@ -1,5 +1,12 @@
 # AtomicKV: High-Performance Distributed Key-Value Store
 
+![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
+![Language](https://img.shields.io/badge/language-C%2B%2B17-blue)
+![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20AWS-orange)
+![Docker](https://img.shields.io/badge/docker-ready-blue)
+
+---
+
 AtomicKV is a persistent, multithreaded in-memory key-value database implemented in C++. It is designed to handle concurrent workloads using raw TCP sockets and POSIX threading, bypassing the overhead of higher-level protocols like HTTP.
 
 The system features Append-Only File (AOF) persistence for crash recovery, an LRU eviction policy for memory management, and a custom application-layer protocol for client-server communication.
