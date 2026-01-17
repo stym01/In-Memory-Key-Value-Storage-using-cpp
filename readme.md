@@ -77,7 +77,7 @@ make
 Start the server executable. It will listen on port 8080 by default.
 
 ```bash
-./atomic_server
+./nitredis_server
 ```
 
 ### Connecting via Client
@@ -115,8 +115,8 @@ NULL           #(response from server as now this key has been deleted)
 To run the application in a containerized environment, build the Docker image and run the container mapping the internal port 8080 to the host.
 
 ```bash
-docker build -t atomickv .
-docker run -d -p 8080:8080 
+docker build -t nitredis:v1 .
+docker run -p 8080:8080 nitredis:v1
 ```
 
 ### AWS EC2
@@ -124,7 +124,7 @@ The project is configured to run on standard Linux instances (e.g., Ubuntu 22.04
 
 1.  **Provision Instance**: Launch an EC2 instance.
 2.  **Configure Security Group**: Add a custom Inbound Rule to allow **TCP** traffic on port **8080** from your IP address (or 0.0.0.0/0 for public access).
-3.  **Run Application**: Clone the repository on the instance, build using `make`, and start the server using `./atomic_server`.
+3.  **Run Application**: Clone the repository on the instance, build using `make`, and start the server using `./nitredis_server`.
 
 ## Project Structure
 
