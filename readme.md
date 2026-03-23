@@ -35,7 +35,7 @@ AtomicKV utilizes a highly optimized event-driven architecture, similar to produ
 graph TD
     Client[Multiple Concurrent Clients] -->|Non-blocking TCP| Server[Server Socket]
     Server -->|Register| Epoll[epoll Instance]
-    Epoll -->|Event Trigger (EPOLLIN)| Loop[Single-Threaded Event Loop]
+    Epoll -->|Event Trigger | Loop[Single-Threaded Event Loop]
     Loop -->|Parse & Execute| KVStore[In-Memory Hash Map + LRU Tracker]
     KVStore -->|Log| AOF[AOF Disk File]
 ```
