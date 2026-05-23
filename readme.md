@@ -79,7 +79,6 @@ Start the server executable. It will listen on port **8081** by default.
 
 ```bash
 ./nitredis_server
-./nitredis_server
 ```
 
 ### Connecting via Client
@@ -111,26 +110,8 @@ GET value2
 NULL           #(response from server as now this key has been deleted)
 ```
 
-## Deployment
-
-### Docker
-To run the application in a containerized environment, build the Docker image and run the container mapping the internal port 8080 to the host.
-
-```bash
-docker build -t atomickv .
-docker run -d -p 8081:8081 
-```
-
-### AWS EC2
-The project is configured to run on standard Linux instances (e.g., Ubuntu 22.04 LTS).
-
-1.  **Provision Instance**: Launch an EC2 instance.
-2.  **Configure Security Group**: Add a custom Inbound Rule to allow **TCP** traffic on port **8080** from your IP address (or 0.0.0.0/0 for public access).
-3.  **Run Application**: Clone the repository on the instance, build using `make`, and start the server using `./nitredis_server`.
-3.  **Run Application**: Clone the repository on the instance, build using `make`, and start the server using `./nitredis_server`.
 
 ## Project Structure
-
 * `src/`: Contains the core implementation files.
     * `server.cpp`: Entry point handling TCP connections and thread management.
     * `kv_store.cpp`: Implementation of the thread-safe Key-Value store and O(1) LRU cache eviction policy.
@@ -138,3 +119,42 @@ The project is configured to run on standard Linux instances (e.g., Ubuntu 22.04
 * `Dockerfile`: Instructions for building the Linux-based container image.
 * `Makefile`: Automation script for compiling and linking the C++ source code.
 * `benchmark.py`: Python script used for latency and throughput testing.
+
+## Deployment
+
+### Docker
+To run the application in a containerized environment, build the Docker image and run the container mapping the internal port 8081 to the host.
+
+```bash
+docker build -t atomickv .
+docker run -d -p 8081:8081 atomickv
+```
+
+### AWS EC2
+The project is configured to run on standard Linux instances (e.g., Ubuntu 22.04 LTS).
+
+1.  **Provision Instance**: Launch an EC2 instance.
+2.  **Configure Security Group**: Add a custom Inbound Rule to allow **TCP** traffic on port **8081** from your IP address (or 0.0.0.0/0 for public access).
+3.  **Run Application**: Clone the repository on the instance, build using `make`, and start the server using `./nitredis_server` on tmux.
+
+## Try It Live
+
+You can interact with a live, deployed instance of this key-value store directly from your terminal. No installation is required—just connect via TCP using `netcat`:
+
+```bash
+nc 100.53.37.203 8081
+```
+
+Once connected, you can immediately start sending database commands. 
+
+**Example Interaction:**
+```text
+> SET name Satyam
+OK
+> GET name
+Satyam
+> DEL name
+OK
+```
+*(Press `Ctrl + C` to exit the connection when you are done).*
+
