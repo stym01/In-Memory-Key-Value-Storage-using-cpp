@@ -1,141 +1,293 @@
-# AtomicKV: High-Performance Distributed Key-Value Store
-
-![Language](https://img.shields.io/badge/language-C%2B%2B17-blue)
-![Architecture](https://img.shields.io/badge/architecture-epoll%20Event%20Loop-success)
-![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20AWS-orange)
-![Docker](https://img.shields.io/badge/docker-ready-blue)
+<div align="center">
+  <h1>NitKVStore</h1>
+  <p><b>A high-performance, fully distributed, tiered Key-Value store built from scratch in C++17.</b></p>
+  <p>
+    <img src="https://img.shields.io/badge/language-C%2B%2B17-blue" alt="Language" />
+    <img src="https://img.shields.io/badge/architecture-epoll%20Event%20Loop-success" alt="Architecture" />
+    <img src="https://img.shields.io/badge/platform-Linux%20%7C%20AWS-orange" alt="Platform" />
+    <img src="https://img.shields.io/badge/docker-ready-blue" alt="Docker" />
+  </p>
+</div>
 
 ---
 
-AtomicKV is a high-performance, single-threaded, event-driven in-memory key-value database implemented in C++. It is engineered to handle massive concurrent workloads using Linux `epoll` and non-blocking POSIX sockets, effectively resolving the C10K problem by eliminating the context-switching overhead of traditional thread-per-client models.
+## Motivation
+I built NitKVStore to deeply understand the internals of distributed databases like Redis and Cassandra. Reading academic papers wasn't enough, so I wanted to implement the core concepts—like non-blocking I/O, custom B-Trees, and eventual consistency—entirely from scratch. 
 
-The system features an O(1) LRU eviction policy, lazy expiration for memory management, Append-Only File (AOF) persistence for crash recovery, and a custom application-layer protocol for client-server communication.
+What started as a simple in-memory cache evolved into a distributed, fault-tolerant system capable of handling nearly 10,000 concurrent connections on a single thread. 
 
-## Key Features
+If you are reviewing this project, this document walks through the exact engineering journey, architectural decisions, and trade-offs made along the way.
 
-* **Asynchronous Event Loop**: Transitioned from a blocking multithreaded architecture to a highly scalable single-threaded model using the Linux `epoll` API.
-* **Non-Blocking I/O**: Built directly on POSIX Sockets (`sys/socket`) using `fcntl` to ensure the main server thread never blocks during network reads/writes, allowing it to multiplex thousands of connections simultaneously.
-* **Memory Management**:
-    * **LRU Cache**: Implements a Least Recently Used eviction policy using a combination of a Doubly Linked List and a Hash Map, ensuring O(1) time complexity for eviction and retrieval.
-    * **Lazy Expiration (TTL)**: Keys with Time-To-Live values are evicted lazily upon access, entirely removing background thread CPU overhead for expired key cleanup.
-* **Data Persistence**: Features an Append-Only File (AOF) mechanism. Write operations are logged to disk, ensuring data survives server restarts while maintaining high throughput.
-* **Cloud Deployment**: The application is containerized using Docker and verified for production deployment on AWS EC2 instances.
+---
 
-## System Architecture
+## 1. The Core Engine: Solving C10k with `epoll`
+The standard approach to building a server is spawning a new `std::thread` for every client. This works fine for 100 users, but crashes and burns at 10,000 users because the CPU spends more time context-switching between threads than actually processing data. 
 
-AtomicKV utilizes a highly optimized event-driven architecture, similar to production systems like Redis and Nginx. Instead of spawning a new thread for every client, a single main thread monitors an `epoll` instance.
+NitKVStore abandons multithreading for its network layer. Instead, it uses Linux's **`epoll` API** combined with **non-blocking POSIX sockets (`fcntl`)**. A *single* main thread monitors thousands of sockets simultaneously. It only wakes up to process data when the OS kernel explicitly notifies it that a socket is ready for reading or writing, completely eliminating context-switching overhead.
 
-**Data Flow:**
-1.  **Event Notification:** The `epoll_wait` system call alerts the server when a socket (either a new connection or an existing client sending a command) is ready for I/O.
-2.  **Networking Layer:** Reads raw bytes from the non-blocking socket and parses the custom protocol commands (SET, GET, DEL).
-3.  **Storage Layer:** Updates the in-memory Hash Map and reorganizes the LRU Doubly Linked List pointers in constant time.
-4.  **Persistence Layer:** Appends the command to the AOF log file.
+---
+
+## 2. The Storage Engine: LRU Cache & Custom B-Tree
+NitKVStore isn't just a volatile cache; it is a tiered, persistent database. To achieve this, I built a two-layer storage engine.
+
+### L1: The RAM Layer (LRU Cache & Bloom Filter)
+For lightning-fast reads, data sits in a custom-built Least Recently Used (LRU) Cache. It uses a combination of a `std::unordered_map` and a doubly-linked list to achieve **`O(1)` time complexity** for both lookups and evictions. It also implements Lazy Expiration (TTL)—expired keys are cleaned up upon access rather than wasting CPU cycles on a background thread. 
+
+Additionally, a **Bloom Filter** sits in front of the cache. If a client requests a key that doesn't exist, the Bloom Filter instantly returns a negative result, completely avoiding an expensive fallback read to the disk layer.
+
+### L2: The Disk Layer (Order-3 B-Tree)
+When the RAM fills up, data isn't lost. It falls back to a custom **Order-3 B-Tree** built entirely from scratch. 
+To optimize disk I/O, keys and values are decoupled:
+1. **`database.dat`**: The raw string values are simply appended to this file.
+2. **`btree.idx`**: The B-Tree only stores the keys and the *byte-offsets* pointing to where the value lives in the `.dat` file. 
+
+If a B-Tree node fills up, the tree dynamically splits the node and grows taller, maintaining `O(log N)` search times even on a spinning hard drive.
+
+#### How a `SET` Request Works (Durability First)
+Data is always written to disk before acknowledging the client to ensure crash recovery.
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Epoll as Server - epoll
+    participant KV as KVStore
+    participant LRU as RAM Cache
+    participant Disk as B-Tree - Disk
+
+    Client->>Epoll: "SET my_key my_value\n"
+    Epoll->>KV: set("my_key", "my_value")
+    
+    %% Write to Disk First (Durability)
+    KV->>Disk: insert("my_key", "my_value")
+    Disk->>Disk: dat_file.write(value) -> flush()
+    
+    alt B-Tree Root Full
+        Disk->>Disk: Split Root Node (Tree grows taller)
+    end
+    
+    Disk->>Disk: Find leaf & insert Key + Offset
+    Disk->>Disk: idx_file.write(node) -> flush()
+    Disk-->>KV: Insert Success
+    
+    %% Update RAM Cache
+    opt If Cache is Full
+        KV->>LRU: Evict oldest key from RAM
+    end
+    KV->>LRU: Insert/Update "my_key" in RAM
+    KV->>LRU: Move to front (Mark as Recently Used)
+    
+    KV-->>Epoll: Returns "OK"
+    Epoll-->>Client: "OK\n"
+```
+
+#### How a `GET` Request Works (Fast Path vs Slow Path)
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Epoll as Server - epoll
+    participant KV as KVStore
+    participant LRU as RAM Cache
+    participant Disk as B-Tree - Disk
+
+    Client->>Epoll: "GET my_key\n"
+    Epoll->>KV: get("my_key")
+    
+    %% RAM Check
+    KV->>LRU: Check memory map
+    
+    alt Cache Hit (Fast Path)
+        LRU-->>KV: Returns Value immediately
+        KV->>LRU: Move key to front of list (Mark as Recently Used)
+    else Cache Miss (Slow Path)
+        LRU-->>KV: Not Found (Miss)
+        
+        %% Disk Check
+        KV->>Disk: search("my_key")
+        Disk->>Disk: Read btree.idx (Find Offset)
+        Disk->>Disk: Read database.dat (Fetch Value)
+        Disk-->>KV: Returns Value
+        
+        %% Bring to RAM
+        KV->>LRU: Insert into RAM Cache
+    end
+    
+    KV-->>Epoll: Returns string
+    Epoll-->>Client: "my_value\n"
+```
+
+---
+
+## 3. Scaling Out: The Distributed Journey
+A single node is great, but real databases need to scale. Here is how NitKVStore evolved into a distributed system over three phases.
+
+### Phase 1: Consistent Hashing Proxy
+To distribute load without forcing the client application to map keys to specific servers, the nodes themselves do the routing. Using a **Consistent Hash Ring** with virtual nodes, any server can accept a request, hash the key, and route it to the correct owner node behind the scenes.
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant NodeA as Node 8081 - Receiver
+    participant NodeB as Node 8082 - Owner
+
+    Client->>NodeA: GET user_123
+    Note over NodeA: Hashes "user_123"<br/>Ring maps it to Node 8082
+    NodeA->>NodeB: Proxy Request
+    NodeB-->>NodeA: Data found
+    NodeA-->>Client: Return Data
+```
+
+### Phase 2: Asynchronous Replication (High Availability)
+To handle node failures, data must be replicated. However, waiting for network calls to backup nodes blocks the main `epoll` thread. To fix this, NitKVStore embraces **Eventual Consistency**. The primary node saves the data locally, immediately returns `OK` to the client, and enqueues the write for an isolated background thread to asynchronously replicate to other nodes.
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Primary as Node A - Primary
+    participant Replica as Node B - Backup
+
+    Client->>Primary: SET my_key my_value
+    Primary->>Primary: Write to local Tiered Storage
+    Primary-->>Client: OK
+    
+    Note over Primary: Background Replication
+    Primary-)Replica: INTERNAL_SET my_key my_value
+```
+
+### Phase 3: Gossip Protocol & Failure Detection
+How does the cluster know when a node dies without a central master server? **Gossip Protocol**. 
+Every few seconds, a node randomly selects another node and whispers its state. If a node stops responding for a 10-second timeout, the cluster marks it as dead and automatically rebalances the Consistent Hash Ring.
 
 ```mermaid
 graph TD
-    Client[Multiple Concurrent Clients] -->|Non-blocking TCP| Server[Server Socket]
-    Server -->|Register| Epoll[epoll Instance]
-    Epoll -->|Event Trigger | Loop[Single-Threaded Event Loop]
-    Loop -->|Parse & Execute| KVStore[In-Memory Hash Map + LRU Tracker]
-    KVStore -->|Log| AOF[AOF Disk File]
+    classDef alive fill:#2ecc71,stroke:#27ae60,stroke-width:2px,color:white;
+    classDef dead fill:#e74c3c,stroke:#c0392b,stroke-width:2px,color:white;
+
+    Node1["Node 8081"]:::alive
+    Node2["Node 8082"]:::alive
+    Node3["Node 8083"]:::alive
+    Node4["Node 8084 (Crashed)"]:::dead
+
+    Node1 <-->|"Heartbeats"| Node2
+    Node2 <-->|"Heartbeats"| Node3
+    Node1 -.->|"Timeout"| Node4
+    Node1 -->|"Remove from Ring"| Node4
 ```
-## Performance Benchmarks
 
-To verify the scalability of the `epoll` architecture, a custom concurrent Python benchmarking suite utilizing a `ThreadPoolExecutor` was used to load-test the server with thousands of interleaved commands.
+---
 
-**Test Conditions:**
-* **Clients:** 200 Concurrent Connections
-* **Payload:** 200 `SET` and `GET` operations per client (Total 80,000 requests)
-* **Protocol:** Raw TCP Sockets
-* **Environment:** Native Linux
+## 4. Conflict Resolution (Eventual Consistency)
+Because the system prioritizes High Availability (AP in the CAP theorem), data conflicts will inevitably occur.
+* **Lamport Clocks:** Every write operation increments a logical clock. If two clients update the exact same key on different nodes simultaneously, the cluster uses the Lamport Clock to determine the "winner" (Last Write Wins).
+* **Anti-Entropy & Merkle Trees:** Background workers continuously compare data between nodes to repair stale records. To avoid clogging the network, nodes build **Merkle Trees** of their data. They compare root hashes, and if they differ, they traverse the tree to find and exchange only the exact differing keys.
 
-**Results:**
+---
+
+## 5. The Custom Wire Protocol
+Instead of relying on heavy application-layer protocols like HTTP or gRPC, NitKVStore communicates over raw TCP using a custom, lightweight wire protocol. This minimizes bandwidth and parsing overhead.
+
+The server expects newline-terminated (`\n`) ASCII commands.
+
+**Packet Anatomy:**
+* **`SET` Command:** `SET <key> <value> [TTL]\n`
+  * *Example:* `SET session_token abc123 3600\n`
+* **`GET` Command:** `GET <key>\n`
+  * *Example:* `GET session_token\n`
+* **Internal Cluster Commands:**
+  * Background replication threads bypass the public API by sending internal commands like `INTERNAL_SET` to ensure replicas apply the exact Lamport timestamps generated by the primary node.
+
+Because the socket is non-blocking, the server buffers incoming bytes into a per-client queue until a `\n` character is detected, at which point the full command is dispatched to the storage engine.
+
+---
+
+## Project Structure
+
+* `src/server.cpp`: Main `epoll` loop, TCP handling, and protocol parsing.
+* `src/kv_store.cpp`: Thread-safe Key-Value store and LRU cache logic.
+* `src/btree.cpp`: Disk-persistence engine implementation.
+* `include/`: Interface definitions.
+* `benchmark.py`: Multithreaded Python script for stress-testing.
+
+---
+
+## Performance
+
+The system was benchmarked using a custom Python script simulating concurrent clients to test the `epoll` architecture.
 
 | Metric | Result |
 | :--- | :--- |
 | **Total Requests** | 80,000 |
 | **Time Taken** | 8.04 seconds |
 | **Throughput** | **~9,950 Requests/Sec** |
-| **Average Latency** | **32.97 ms** (per SET+GET pair) |
+| **Average Latency** | **32.97 ms** (per SET + GET pair) |
 
-> *Note: These results demonstrate the massive throughput advantage of the `epoll` architecture. By eliminating `std::thread` creation and context-switching overhead, the server comfortably handles nearly 10k concurrent operations per second.*
+Running on a standard Linux environment, the single-threaded server comfortably handles roughly 10,000 operations per second.
 
-## Build and Usage
+---
+
+## Usage
 
 ### Prerequisites
-* C++ Compiler (g++ supporting C++17)
-* Make
-* Linux Environment (Required for `sys/epoll.h`)
-* Docker (Optional)
+* Linux environment (or WSL)
+* `g++` (C++17) and `make`
 
-### Compilation
-To compile the server from source:
-
+### Build
 ```bash
-make
-```
-### Running the Server
-Start the server executable. It will listen on port **8081** by default.
-
-```bash
-./nitredis_server
+make clean && make
 ```
 
-### Connecting via Client
-You can interact with the server using netcat (`nc`) or Telnet.
+### Run a Cluster
+You can start multiple nodes to test the distributed features. Open separate terminals:
+
+```bash
+# Node 1
+./nitredis_server 8081
+
+# Node 2 (Joins via Node 1)
+./nitredis_server 8082 127.0.0.1:8081
+
+# Node 3 (Joins via Node 1)
+./nitredis_server 8083 127.0.0.1:8081
+```
+
+### Client Connection
+Connect using `nc` or `telnet`:
 
 ```bash
 nc localhost 8081
 ```
 
-**Supported Commands:**
-* `SET <key> <value>`: Store a string value.
-* `SET <key> <value> <seconds>`: Store a string with a timeout.
-* `GET <key>`: Retrieve a value.
-* `DEL <key>`: Remove a key.
+**Commands:**
+* `SET <key> <value>`
+* `SET <key> <value> <seconds>` (with TTL)
+* `GET <key>`
+* `DEL <key>`
 
-**Example Session on client terminal:**
+**Example:**
 ```bash
-SET value1 96   #(sent request from client)
-OK              #(received response from server)  
-GET value1      #(sent request from client)
-96              #(received response from server)  
-SET value2 10 20 #it will assign 10 to value2 and it will expire after 20 seconds  #(sent request from client)
-OK              #(response received from server)
-GET value2
-10
+SET user_1 alice
+OK
 
-#after 20 seconds
-GET value2
-NULL           #(response from server as now this key has been deleted)
+GET user_1
+alice
+
+SET temp_token 12345 10
+OK
 ```
 
-
-## Project Structure
-* `src/`: Contains the core implementation files.
-    * `server.cpp`: Entry point handling TCP connections and thread management.
-    * `kv_store.cpp`: Implementation of the thread-safe Key-Value store and O(1) LRU cache eviction policy.
-* `include/`: Header files defining the system interface and class structure.
-* `Dockerfile`: Instructions for building the Linux-based container image.
-* `Makefile`: Automation script for compiling and linking the C++ source code.
-* `benchmark.py`: Python script used for latency and throughput testing.
+---
 
 ## Deployment
 
 ### Docker
-To run the application in a containerized environment, build the Docker image and run the container mapping the internal port 8081 to the host.
-
 ```bash
-docker build -t atomickv .
-docker run -d -p 8081:8081 atomickv
+docker build -t nitkvstore .
+docker run -d -p 8081:8081 nitkvstore
 ```
 
 ### AWS EC2
-The project is configured to run on standard Linux instances (e.g., Ubuntu 22.04 LTS).
+Tested on Ubuntu 22.04 LTS. Ensure your Security Group allows inbound TCP traffic on port 8081. Clone the repository, compile with `make`, and run `./nitredis_server`.
 
-1.  **Provision Instance**: Launch an EC2 instance.
-2.  **Configure Security Group**: Add a custom Inbound Rule to allow **TCP** traffic on port **8081** from your IP address (or 0.0.0.0/0 for public access).
-3.  **Run Application**: Clone the repository on the instance, build using `make`, and start the server using `./nitredis_server` on tmux.
+---
 
 ## Try It Live
 
@@ -148,7 +300,7 @@ nc 100.53.37.203 8081
 Once connected, you can immediately start sending database commands. 
 
 **Example Interaction:**
-```text
+```text    
 > SET name Satyam
 OK
 > GET name
@@ -158,3 +310,7 @@ OK
 ```
 *(Press `Ctrl + C` to exit the connection when you are done).*
 
+---
+
+## What I Learned
+This project was an exercise in understanding system-level programming. Implementing a B-Tree from scratch, working directly with the Linux kernel (`epoll`), and dealing with distributed consensus and lock-free structures provided a much deeper appreciation for production databases.

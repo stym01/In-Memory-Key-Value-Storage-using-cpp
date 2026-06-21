@@ -1,0 +1,15 @@
+Server listening on port 8081 using epoll...
+Node ID: 127.0.0.1:8081 (N=3, W=2, R=2)
+[DEBUG] Received command: GOSSIP key: 127.0.0.1
+[DEBUG] Received command: GOSSIP key: 127.0.0.1
+[DEBUG] Received command: GOSSIP key: 127.0.0.1
+[DEBUG] Received command: GOSSIP key: 127.0.0.1
+[DEBUG] Received command: GOSSIP key: 127.0.0.1
+[DEBUG] Received command: GOSSIP key: 127.0.0.1
+[DEBUG] Received command: SET key: mykey
+[DEBUG] Quorum Write Read phase complete. Acks: 3
+[DEBUG] Quorum Write Write phase complete. Acks: 3 required: 2
+[DEBUG] Received command: INTERNAL_GET key: mykey
+[DEBUG] Received command: INTERNAL_GET key: mykey
+[DEBUG] Received command: INTERNAL_SET key: mykey
+[DEBUG] Received command: GOSSIP key: 127.0.0.1
