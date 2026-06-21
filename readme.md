@@ -1,5 +1,5 @@
 <div align="center">
-  <h1>NitKVStore</h1>
+  <h1>AtomicKV</h1>
   <p><b>A high-performance, fully distributed, tiered Key-Value store built from scratch in C++17.</b></p>
   <p>
     <img src="https://img.shields.io/badge/language-C%2B%2B17-blue" alt="Language" />
@@ -12,7 +12,7 @@
 ---
 
 ## Motivation
-I built NitKVStore to deeply understand the internals of distributed databases like Redis and Cassandra. Reading academic papers wasn't enough, so I wanted to implement the core concepts—like non-blocking I/O, custom B-Trees, and eventual consistency—entirely from scratch. 
+I built AtomicKV to deeply understand the internals of distributed databases like Redis and Cassandra. Reading academic papers wasn't enough, so I wanted to implement the core concepts—like non-blocking I/O, custom B-Trees, and eventual consistency—entirely from scratch. 
 
 What started as a simple in-memory cache evolved into a distributed, fault-tolerant system capable of handling nearly 10,000 concurrent connections on a single thread. 
 
@@ -23,12 +23,12 @@ If you are reviewing this project, this document walks through the exact enginee
 ## 1. The Core Engine: Solving C10k with `epoll`
 The standard approach to building a server is spawning a new `std::thread` for every client. This works fine for 100 users, but crashes and burns at 10,000 users because the CPU spends more time context-switching between threads than actually processing data. 
 
-NitKVStore abandons multithreading for its network layer. Instead, it uses Linux's **`epoll` API** combined with **non-blocking POSIX sockets (`fcntl`)**. A *single* main thread monitors thousands of sockets simultaneously. It only wakes up to process data when the OS kernel explicitly notifies it that a socket is ready for reading or writing, completely eliminating context-switching overhead.
+AtomicKV abandons multithreading for its network layer. Instead, it uses Linux's **`epoll` API** combined with **non-blocking POSIX sockets (`fcntl`)**. A *single* main thread monitors thousands of sockets simultaneously. It only wakes up to process data when the OS kernel explicitly notifies it that a socket is ready for reading or writing, completely eliminating context-switching overhead.
 
 ---
 
 ## 2. The Storage Engine: LRU Cache & Custom B-Tree
-NitKVStore isn't just a volatile cache; it is a tiered, persistent database. To achieve this, I built a two-layer storage engine.
+AtomicKV isn't just a volatile cache; it is a tiered, persistent database. To achieve this, I built a two-layer storage engine.
 
 ### L1: The RAM Layer (LRU Cache & Bloom Filter)
 For lightning-fast reads, data sits in a custom-built Least Recently Used (LRU) Cache. It uses a combination of a `std::unordered_map` and a doubly-linked list to achieve **`O(1)` time complexity** for both lookups and evictions. It also implements Lazy Expiration (TTL)—expired keys are cleaned up upon access rather than wasting CPU cycles on a background thread. 
@@ -118,7 +118,7 @@ sequenceDiagram
 ---
 
 ## 3. Scaling Out: The Distributed Journey
-A single node is great, but real databases need to scale. Here is how NitKVStore evolved into a distributed system over three phases.
+A single node is great, but real databases need to scale. Here is how AtomicKV evolved into a distributed system over three phases.
 
 ### Phase 1: Consistent Hashing Proxy
 To distribute load without forcing the client application to map keys to specific servers, the nodes themselves do the routing. Using a **Consistent Hash Ring** with virtual nodes, any server can accept a request, hash the key, and route it to the correct owner node behind the scenes.
@@ -137,7 +137,7 @@ sequenceDiagram
 ```
 
 ### Phase 2: Asynchronous Replication (High Availability)
-To handle node failures, data must be replicated. However, waiting for network calls to backup nodes blocks the main `epoll` thread. To fix this, NitKVStore embraces **Eventual Consistency**. The primary node saves the data locally, immediately returns `OK` to the client, and enqueues the write for an isolated background thread to asynchronously replicate to other nodes.
+To handle node failures, data must be replicated. However, waiting for network calls to backup nodes blocks the main `epoll` thread. To fix this, AtomicKV embraces **Eventual Consistency**. The primary node saves the data locally, immediately returns `OK` to the client, and enqueues the write for an isolated background thread to asynchronously replicate to other nodes.
 
 ```mermaid
 sequenceDiagram
@@ -183,7 +183,7 @@ Because the system prioritizes High Availability (AP in the CAP theorem), data c
 ---
 
 ## 5. The Custom Wire Protocol
-Instead of relying on heavy application-layer protocols like HTTP or gRPC, NitKVStore communicates over raw TCP using a custom, lightweight wire protocol. This minimizes bandwidth and parsing overhead.
+Instead of relying on heavy application-layer protocols like HTTP or gRPC, AtomicKV communicates over raw TCP using a custom, lightweight wire protocol. This minimizes bandwidth and parsing overhead.
 
 The server expects newline-terminated (`\n`) ASCII commands.
 
@@ -195,7 +195,6 @@ The server expects newline-terminated (`\n`) ASCII commands.
 * **Internal Cluster Commands:**
   * Background replication threads bypass the public API by sending internal commands like `INTERNAL_SET` to ensure replicas apply the exact Lamport timestamps generated by the primary node.
 
-Because the socket is non-blocking, the server buffers incoming bytes into a per-client queue until a `\n` character is detected, at which point the full command is dispatched to the storage engine.
 
 ---
 
@@ -240,13 +239,13 @@ You can start multiple nodes to test the distributed features. Open separate ter
 
 ```bash
 # Node 1
-./nitredis_server 8081
+./atomickv_server 8081
 
 # Node 2 (Joins via Node 1)
-./nitredis_server 8082 127.0.0.1:8081
+./atomickv_server 8082 127.0.0.1:8081
 
 # Node 3 (Joins via Node 1)
-./nitredis_server 8083 127.0.0.1:8081
+./atomickv_server 8083 127.0.0.1:8081
 ```
 
 ### Client Connection
@@ -280,12 +279,12 @@ OK
 
 ### Docker
 ```bash
-docker build -t nitkvstore .
-docker run -d -p 8081:8081 nitkvstore
+docker build -t AtomicKV .
+docker run -d -p 8081:8081 AtomicKV
 ```
 
 ### AWS EC2
-Tested on Ubuntu 22.04 LTS. Ensure your Security Group allows inbound TCP traffic on port 8081. Clone the repository, compile with `make`, and run `./nitredis_server`.
+Tested on Ubuntu 22.04 LTS. Ensure your Security Group allows inbound TCP traffic on port 8081. Clone the repository, compile with `make`, and run `./atomickv_server`.
 
 ---
 
@@ -314,3 +313,4 @@ OK
 
 ## What I Learned
 This project was an exercise in understanding system-level programming. Implementing a B-Tree from scratch, working directly with the Linux kernel (`epoll`), and dealing with distributed consensus and lock-free structures provided a much deeper appreciation for production databases.
+

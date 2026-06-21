@@ -78,8 +78,8 @@ make
 Start the server executable. It will listen on port **8081** by default.
 
 ```bash
-./nitredis_server
-./nitredis_server
+./atomickv_server
+./atomickv_server
 ```
 
 ### Connecting via Client
@@ -126,8 +126,8 @@ The project is configured to run on standard Linux instances (e.g., Ubuntu 22.04
 
 1.  **Provision Instance**: Launch an EC2 instance.
 2.  **Configure Security Group**: Add a custom Inbound Rule to allow **TCP** traffic on port **8080** from your IP address (or 0.0.0.0/0 for public access).
-3.  **Run Application**: Clone the repository on the instance, build using `make`, and start the server using `./nitredis_server`.
-3.  **Run Application**: Clone the repository on the instance, build using `make`, and start the server using `./nitredis_server`.
+3.  **Run Application**: Clone the repository on the instance, build using `make`, and start the server using `./atomickv_server`.
+3.  **Run Application**: Clone the repository on the instance, build using `make`, and start the server using `./atomickv_server`.
 
 ## Project Structure
 
@@ -138,3 +138,4 @@ The project is configured to run on standard Linux instances (e.g., Ubuntu 22.04
 * `Dockerfile`: Instructions for building the Linux-based container image.
 * `Makefile`: Automation script for compiling and linking the C++ source code.
 * `benchmark.py`: Python script used for latency and throughput testing.
+

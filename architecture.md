@@ -1,4 +1,4 @@
-# NitKVStore Architecture
+# AtomicKV Architecture
 
 Below are detailed architectural diagrams that visualize exactly how the system is structured and how data flows through it. 
 
@@ -127,3 +127,4 @@ sequenceDiagram
     KV-->>Epoll: Returns "OK"
     Epoll-->>Client: "OK\n"
 ```
+

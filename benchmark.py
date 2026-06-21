@@ -43,7 +43,7 @@ def worker(host, port, num_requests, results, worker_id):
         
     results[worker_id] = (success_count, failure_count)
 def main():
-    parser = argparse.ArgumentParser(description="Benchmark the NitKVStore Cluster")
+    parser = argparse.ArgumentParser(description="Benchmark the AtomicKV Cluster")
     parser.add_argument("--host", default="127.0.0.1", help="Target host (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=8081, help="Target port (default: 8081)")
     parser.add_argument("--threads", type=int, default=10, help="Number of concurrent clients (default: 10)")
@@ -51,7 +51,7 @@ def main():
     args = parser.parse_args()
     total_requests = args.threads * args.requests
     print(f"==========================================")
-    print(f" NitKVStore Benchmark Tool")
+    print(f" AtomicKV Benchmark Tool")
     print(f"==========================================")
     print(f" Target Node : {args.host}:{args.port}")
     print(f" Concurrency : {args.threads} threads")
@@ -92,3 +92,4 @@ def main():
     print(f"==========================================\n")
 if __name__ == "__main__":
     main()
+

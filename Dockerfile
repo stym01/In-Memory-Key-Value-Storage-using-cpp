@@ -20,4 +20,4 @@ RUN make
 EXPOSE 8080
 
 # Command to run the server when container starts
-CMD ["./nitredis_server"]
+CMD ["./atomickv_server"]

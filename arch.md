@@ -1,6 +1,6 @@
-# NitKVStore: Complete Architecture and Components
+# AtomicKV: Complete Architecture and Components
 
-This document outlines the core components of the current NitKVStore system and provides a unified architecture diagram showing how they all fit together to deliver a high-performance, distributed, and eventually consistent database.
+This document outlines the core components of the current AtomicKV system and provides a unified architecture diagram showing how they all fit together to deliver a high-performance, distributed, and eventually consistent database.
 
 ## Core Components
 
@@ -77,3 +77,4 @@ graph TD
     Migration -.->|"Transfer Keys"| Cluster
     AntiEntropy -.->|"Sync Stale Data"| Cluster
 ```
+
